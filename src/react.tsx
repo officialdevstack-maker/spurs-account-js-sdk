@@ -12,6 +12,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -23,6 +24,12 @@ import { SPURS_ISSUER } from "./constants.js";
 import type { SpursUser } from "./types.js";
 
 const DEFAULT_ACCENT = "#6366f1";
+/** Space between the avatar and the popover, and the minimum gap to the viewport edge. */
+const GAP = 8;
+const EDGE = 8;
+
+// useLayoutEffect warns during SSR on React < 19; fall back to useEffect there.
+const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 export interface SpursAccountMenuProps {
   /** The signed-in user. Omit it to render a "Sign in with Spurs" button. */
@@ -164,6 +171,7 @@ export function SpursAccountMenu({
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
   const close = useCallback((restoreFocus = false) => {
@@ -187,6 +195,66 @@ export function SpursAccountMenu({
       document.removeEventListener("keydown", onKey);
     };
   }, [open, close]);
+
+  // Don't reopen on its own if the user signs out and back in.
+  useEffect(() => {
+    if (!user) setOpen(false);
+  }, [user]);
+
+  // Position the popover against the viewport instead of its parent. It stays
+  // on screen (clamped horizontally, flipped above the avatar when there's no
+  // room below, scrolls internally if the viewport is tiny), isn't clipped by
+  // `overflow: hidden` ancestors, and is placed before first paint (no flash).
+  useIsoLayoutEffect(() => {
+    const button = buttonRef.current;
+    const panel = panelRef.current;
+    if (!open || !button || !panel) return;
+
+    const place = () => {
+      // `position: fixed` is relative to the viewport unless an ancestor has a
+      // transform, filter or backdrop-filter (common on sticky navbars). Park
+      // the panel at 0,0 to measure where the real origin is, then correct for it.
+      panel.style.top = "0px";
+      panel.style.left = "0px";
+      panel.style.maxHeight = "";
+      const origin = panel.getBoundingClientRect();
+      const anchor = button.getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+
+      const { width, height } = origin;
+      const spaceBelow = vh - anchor.bottom - GAP - EDGE;
+      const spaceAbove = anchor.top - GAP - EDGE;
+      const above = height > spaceBelow && spaceAbove > spaceBelow;
+      const room = Math.max(120, above ? spaceAbove : spaceBelow);
+      const h = Math.min(height, room);
+
+      const wantLeft = align === "left" ? anchor.left : anchor.right - width;
+      const left = Math.max(EDGE, Math.min(wantLeft, vw - width - EDGE));
+      const top = above ? anchor.top - GAP - h : anchor.bottom + GAP;
+
+      if (height > room) panel.style.maxHeight = `${room}px`;
+      panel.style.left = `${left - origin.left}px`;
+      panel.style.top = `${top - origin.top}px`;
+      panel.style.visibility = "visible";
+    };
+
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true); // capture: any scrolling ancestor
+    window.visualViewport?.addEventListener("resize", place);
+    window.visualViewport?.addEventListener("scroll", place);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(place) : null;
+    ro?.observe(panel);
+    ro?.observe(button);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+      window.visualViewport?.removeEventListener("resize", place);
+      window.visualViewport?.removeEventListener("scroll", place);
+      ro?.disconnect();
+    };
+  }, [open, align, size]);
 
   // Close the popover when any link or button inside it is activated, so
   // same-page links and custom `children` don't leave it hanging open.
@@ -243,6 +311,7 @@ export function SpursAccountMenu({
         // promise arrow-key navigation and menuitem children we don't provide.
         <div
           id={panelId}
+          ref={panelRef}
           className={cn("spurs-account-menu__popover", popoverClassName)}
           onClick={onPanelClick}
           style={{
@@ -250,7 +319,10 @@ export function SpursAccountMenu({
             background: surface,
             borderColor: border,
             color: text,
-            ...(align === "left" ? { left: 0 } : { right: 0 }),
+            // Real coordinates are written by the layout effect above.
+            top: 0,
+            left: 0,
+            visibility: "hidden",
           }}
         >
           <div style={{ ...S.header, borderColor: border }}>
@@ -295,6 +367,7 @@ const S = {
     lineHeight: 1,
     fontFamily: "inherit",
     overflow: "hidden",
+    flexShrink: 0,
   },
   signIn: {
     display: "inline-flex",
@@ -308,14 +381,15 @@ const S = {
     fontFamily: "inherit",
   },
   popover: {
-    position: "absolute",
-    top: "calc(100% + 8px)",
+    position: "fixed",
     width: 288,
     maxWidth: "calc(100vw - 16px)",
     borderRadius: 16,
     border: "1px solid",
     boxShadow: "0 12px 32px rgba(0,0,0,.16)",
-    overflow: "hidden",
+    overflowX: "hidden",
+    overflowY: "auto",
+    overscrollBehavior: "contain",
     zIndex: 50,
     fontFamily: "inherit",
   },
