@@ -18,6 +18,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { cn } from "./cn.js";
 import { SPURS_ISSUER } from "./constants.js";
 import type { SpursUser } from "./types.js";
 
@@ -46,6 +47,14 @@ export interface SpursAccountMenuProps {
   theme?: "light" | "dark";
   /** Extra links rendered above "Sign out". */
   children?: ReactNode;
+  /** Classes for the root wrapper (layout: margin, order, self-alignment, etc.). */
+  className?: string;
+  /** Inline styles merged onto the root wrapper. */
+  style?: CSSProperties;
+  /** Classes for the avatar button. Visual props set inline (e.g. background) need Tailwind's `!` modifier. */
+  buttonClassName?: string;
+  /** Classes for the popover panel. Visual props set inline (e.g. background) need Tailwind's `!` modifier. */
+  popoverClassName?: string;
 }
 
 export interface SpursSignInButtonProps {
@@ -57,8 +66,10 @@ export interface SpursSignInButtonProps {
   children?: ReactNode;
   /** Button colour. Defaults to Spurs indigo. */
   accent?: string;
-
-  className?:string;
+  /** Extra classes, merged with Tailwind conflict resolution. */
+  className?: string;
+  /** Inline styles merged over the defaults. */
+  style?: CSSProperties;
 }
 
 const baseOf = (issuer?: string) => (issuer || SPURS_ISSUER).replace(/\/+$/, "");
@@ -68,7 +79,8 @@ export function SpursSignInButton({
   issuer,
   children = "Sign in with Spurs",
   accent = DEFAULT_ACCENT,
-
+  className,
+  style,
 }: SpursSignInButtonProps) {
   // Start with a stable value so server and client markup match, then upgrade
   // to the current URL after hydration when no explicit `returnTo` was given.
@@ -80,7 +92,11 @@ export function SpursSignInButton({
   const href = `${baseOf(issuer)}/sso/continue?return_to=${encodeURIComponent(target)}`;
 
   return (
-    <a href={href} style={{ ...S.signIn, background: accent }}>
+    <a
+      href={href}
+      className={cn("spurs-sign-in", className)}
+      style={{ ...S.signIn, background: accent, ...style }}
+    >
       {children}
     </a>
   );
@@ -140,6 +156,10 @@ export function SpursAccountMenu({
   align = "right",
   theme = "light",
   children,
+  className,
+  style,
+  buttonClassName,
+  popoverClassName,
 }: SpursAccountMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -177,11 +197,15 @@ export function SpursAccountMenu({
   if (!user) {
     // An explicit signInUrl wins; otherwise use the button that carries return_to.
     return signInUrl ? (
-      <a href={signInUrl} style={{ ...S.signIn, background: accent }}>
+      <a
+        href={signInUrl}
+        className={cn("spurs-sign-in", className)}
+        style={{ ...S.signIn, background: accent, ...style }}
+      >
         Sign in with Spurs
       </a>
     ) : (
-      <SpursSignInButton issuer={issuer} accent={accent} />
+      <SpursSignInButton issuer={issuer} accent={accent} className={className} style={style} />
     );
   }
 
@@ -200,10 +224,11 @@ export function SpursAccountMenu({
   const label = user.name || user.email || "Spurs account";
 
   return (
-    <div ref={wrapRef} style={S.wrap}>
+    <div ref={wrapRef} className={cn("spurs-account-menu", className)} style={{ ...S.wrap, ...style }}>
       <button
         ref={buttonRef}
         type="button"
+        className={cn("spurs-account-menu__button", buttonClassName)}
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         aria-label={`Spurs account: ${label}`}
@@ -218,6 +243,7 @@ export function SpursAccountMenu({
         // promise arrow-key navigation and menuitem children we don't provide.
         <div
           id={panelId}
+          className={cn("spurs-account-menu__popover", popoverClassName)}
           onClick={onPanelClick}
           style={{
             ...S.popover,

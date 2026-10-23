@@ -117,10 +117,12 @@ shows their profile picture when available (otherwise initials), name, email,
 **Manage your Spurs Account** → Accounts, and **Sign out**. `picture` is read
 from the shared session claims and replaces the fallback accent in the avatar.
 
-Styled with **inline styles on purpose** — a package inside `node_modules` isn't
-scanned by the host app's Tailwind, so this looks identical in every app. Both
-components use Spurs indigo by default; set the same `accent` in each app to
-share another fallback avatar color:
+The menu panel uses inline styles so it renders consistently across apps. The
+sign-in button and avatar trigger accept Tailwind `className` overrides, merged
+with defaults via `cn` (`clsx` + `tailwind-merge`). Make sure your Tailwind build
+scans this package for the components' default utility classes. Both components
+use Spurs indigo by default; set the same `accent` in each app to share another
+fallback avatar color:
 
 | Prop | Default | Notes |
 | --- | --- | --- |
@@ -132,9 +134,11 @@ share another fallback avatar color:
 | `align` | `"right"` | Popover side |
 | `theme` | `"light"` | `"dark"` for dark surfaces |
 | `children` | — | Extra menu links above "Sign out" |
+| `className` | — | Tailwind classes for the sign-in button or avatar trigger |
 
 `SpursSignInButton` accepts `returnTo`, `issuer`, `accent`, and custom button
-content via `children`.
+content via `children`, as well as `className`. You can also import `cn` from
+`@spurs-cloud/accounts/react` to merge Tailwind classes elsewhere.
 
 Needs `react` (an optional peer dependency).
 

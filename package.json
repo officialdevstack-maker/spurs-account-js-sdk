@@ -30,7 +30,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "jose": "^6.2.3"
+    "clsx": "^2.1.1",
+    "jose": "^6.2.3",
+    "tailwind-merge": "^3.7.0"
   },
   "peerDependencies": {
     "next": ">=15",
