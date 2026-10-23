@@ -1,0 +1,58 @@
+{
+  "name": "@spurs-cloud/accounts",
+  "version": "0.1.0",
+  "description": "Spurs Accounts SDK — shared-session SSO for first-party Spurs apps, and OAuth2/OIDC for third-party apps.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next.d.ts",
+      "import": "./dist/next.js"
+    },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "import": "./dist/react.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "jose": "^6.2.3"
+  },
+  "peerDependencies": {
+    "next": ">=15",
+    "react": ">=18"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/react": "^19",
+    "typescript": "^5"
+  },
+  "keywords": [
+    "spurs",
+    "sso",
+    "oidc",
+    "authentication"
+  ]
+}
