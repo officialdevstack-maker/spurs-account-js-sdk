@@ -8,14 +8,25 @@
  * so this renders identically in every Spurs app regardless of its CSS setup.
  * The accent is a fallback for users without a profile picture.
  */
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from "react";
 import { SPURS_ISSUER } from "./constants.js";
 import type { SpursUser } from "./types.js";
+
+const DEFAULT_ACCENT = "#6366f1";
 
 export interface SpursAccountMenuProps {
   /** The signed-in user. Omit it to render a "Sign in with Spurs" button. */
   user?: Pick<SpursUser, "name" | "email" | "picture"> | null;
-  /** Fallback avatar colour. Defaults to Spurs indigo. */
+  /** Fallback avatar colour (hex). Defaults to Spurs indigo. */
   accent?: string;
   /** Secondary gradient colour. Defaults to a darker shade of `accent`. */
   accentTo?: string;
@@ -25,7 +36,7 @@ export interface SpursAccountMenuProps {
   signOutUrl?: string;
   /** Handle sign-out yourself (e.g. POST to your own route). Wins over `signOutUrl`. */
   onSignOut?: () => void;
-  /** Where the "Sign in" button sends guests. Defaults to Spurs SSO. */
+  /** Where the "Sign in" button sends guests. Defaults to Spurs SSO, returning to the current page. */
   signInUrl?: string;
   /** Avatar diameter in px. Default 36. */
   size?: number;
@@ -38,28 +49,32 @@ export interface SpursAccountMenuProps {
 }
 
 export interface SpursSignInButtonProps {
-  /** Where Spurs Accounts sends the user after signing in. */
+  /** Where Spurs Accounts sends the user after signing in. Defaults to the current page. */
   returnTo?: string;
   /** Accounts base URL. Baked in — override only for dev/staging. */
   issuer?: string;
   /** Override the button label. */
   children?: ReactNode;
-  /** Fallback avatar/button colour. Defaults to Spurs indigo. */
+  /** Button colour. Defaults to Spurs indigo. */
   accent?: string;
 }
+
+const baseOf = (issuer?: string) => (issuer || SPURS_ISSUER).replace(/\/+$/, "");
 
 export function SpursSignInButton({
   returnTo,
   issuer,
   children = "Sign in with Spurs",
-  accent = "#6366f1",
+  accent = DEFAULT_ACCENT,
 }: SpursSignInButtonProps) {
-  const base = (issuer || SPURS_ISSUER).replace(/\/$/, "");
+  // Start with a stable value so server and client markup match, then upgrade
+  // to the current URL after hydration when no explicit `returnTo` was given.
   const [target, setTarget] = useState(returnTo ?? "/");
   useEffect(() => {
-    if (!returnTo) setTarget(window.location.href);
+    setTarget(returnTo ?? window.location.href);
   }, [returnTo]);
-  const href = `${base}/sso/continue?return_to=${encodeURIComponent(target)}`;
+
+  const href = `${baseOf(issuer)}/sso/continue?return_to=${encodeURIComponent(target)}`;
 
   return (
     <a href={href} style={{ ...S.signIn, background: accent }}>
@@ -68,16 +83,51 @@ export function SpursSignInButton({
   );
 }
 
-function initialsOf(user: { name?: string; email?: string } | null | undefined): string {
-  const source = user?.name?.trim() || user?.email?.trim() || "?";
-  const parts = source.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return source.slice(0, 1).toUpperCase();
+function initialsOf(user: { name?: string | null; email?: string | null }): string {
+  const source = user.name?.trim() || user.email?.trim() || "?";
+  // Array.from keeps surrogate pairs (emoji, rarer scripts) intact.
+  const parts = source.split(/\s+/).filter(Boolean).map((p) => Array.from(p)[0]);
+  const letters = parts.length >= 2 ? parts[0] + parts[1] : parts[0] ?? "?";
+  return letters.toUpperCase();
+}
+
+/**
+ * Lighten/darken a hex colour by `amount` (-255..255 per channel).
+ * Anything that isn't #rgb or #rrggbb (named colours, rgb(), hsl(), var())
+ * is returned unchanged rather than turning into "#NaN".
+ */
+function shade(color: string, amount: number): string {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());
+  if (!m) return color;
+  const hex = m[1].length === 3 ? m[1].replace(/./g, "$&$&") : m[1];
+  const num = parseInt(hex, 16);
+  const clamp = (v: number) => Math.max(0, Math.min(255, v));
+  const r = clamp((num >> 16) + amount);
+  const g = clamp(((num >> 8) & 0xff) + amount);
+  const b = clamp((num & 0xff) + amount);
+  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+}
+
+/** Profile picture with an initials fallback if the image fails to load. */
+function Avatar({ picture, initials }: { picture?: string | null; initials: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [picture]);
+
+  if (!picture || failed) return <>{initials}</>;
+  return (
+    <img
+      src={picture}
+      alt=""
+      referrerPolicy="no-referrer"
+      onError={() => setFailed(true)}
+      style={S.avatarImage}
+    />
+  );
 }
 
 export function SpursAccountMenu({
   user,
-  accent = "#6366f1",
+  accent = DEFAULT_ACCENT,
   accentTo,
   issuer,
   signOutUrl,
@@ -89,27 +139,53 @@ export function SpursAccountMenu({
   children,
 }: SpursAccountMenuProps) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const panelId = useId();
 
-  const base = (issuer || SPURS_ISSUER).replace(/\/$/, "");
-  const accountUrl = `${base}/me`;
-  const outUrl = signOutUrl ?? `${base}/logout`;
-  const inUrl = signInUrl ?? `${base}/sso/continue`;
-  const gradient = `linear-gradient(135deg, ${accent}, ${accentTo ?? shade(accent, -28)})`;
+  const close = useCallback((restoreFocus = false) => {
+    setOpen(false);
+    if (restoreFocus) buttonRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    // pointerdown covers mouse, touch and pen.
+    const onDown = (e: PointerEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) close();
     };
-    const onEsc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onEsc);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close(true);
+    };
+    document.addEventListener("pointerdown", onDown);
+    document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onEsc);
+      document.removeEventListener("pointerdown", onDown);
+      document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, close]);
+
+  // Close the popover when any link or button inside it is activated, so
+  // same-page links and custom `children` don't leave it hanging open.
+  const onPanelClick = (e: ReactMouseEvent<HTMLDivElement>) => {
+    if ((e.target as HTMLElement).closest("a, button")) close();
+  };
+
+  if (!user) {
+    // An explicit signInUrl wins; otherwise use the button that carries return_to.
+    return signInUrl ? (
+      <a href={signInUrl} style={{ ...S.signIn, background: accent }}>
+        Sign in with Spurs
+      </a>
+    ) : (
+      <SpursSignInButton issuer={issuer} accent={accent} />
+    );
+  }
+
+  const base = baseOf(issuer);
+  const accountUrl = `${base}/me`;
+  const outUrl = signOutUrl ?? `${base}/logout`;
+  const gradient = `linear-gradient(135deg, ${accent}, ${accentTo ?? shade(accent, -28)})`;
 
   const dark = theme === "dark";
   const surface = dark ? "#18181b" : "#ffffff";
@@ -117,38 +193,42 @@ export function SpursAccountMenu({
   const text = dark ? "#fafafa" : "#111827";
   const muted = dark ? "#a1a1aa" : "#6b7280";
 
-  if (!user) {
-    return (
-      <a href={inUrl} style={{ ...S.signIn, background: accent }}>
-        Sign in with Spurs
-      </a>
-    );
-  }
-
   const initials = initialsOf(user);
+  const label = user.name || user.email || "Spurs account";
 
   return (
-    <div ref={ref} style={S.wrap}>
+    <div ref={wrapRef} style={S.wrap}>
       <button
+        ref={buttonRef}
         type="button"
-        aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Spurs account"
+        aria-controls={open ? panelId : undefined}
+        aria-label={`Spurs account: ${label}`}
         onClick={() => setOpen((v) => !v)}
         style={{ ...S.avatarBtn, width: size, height: size, background: gradient, fontSize: size * 0.4 }}
       >
-        {user.picture ? (
-          <img src={user.picture} alt="" style={S.avatarImage} />
-        ) : initials}
+        <Avatar picture={user.picture} initials={initials} />
       </button>
 
       {open && (
-        <div role="menu" style={{ ...S.popover, background: surface, borderColor: border, color: text, [align]: 0 } as CSSProperties}>
+        // Disclosure pattern: a plain panel of links. `role="menu"` would
+        // promise arrow-key navigation and menuitem children we don't provide.
+        <div
+          id={panelId}
+          onClick={onPanelClick}
+          style={{
+            ...S.popover,
+            background: surface,
+            borderColor: border,
+            color: text,
+            ...(align === "left" ? { left: 0 } : { right: 0 }),
+          }}
+        >
           <div style={{ ...S.header, borderColor: border }}>
             <div style={{ ...S.bigAvatar, background: gradient }}>
-              {user.picture ? <img src={user.picture} alt="" style={S.avatarImage} /> : initials}
+              <Avatar picture={user.picture} initials={initials} />
             </div>
-            <div style={S.name}>{user.name ?? "Your account"}</div>
+            <div style={S.name}>{user.name || "Your account"}</div>
             {user.email && <div style={{ ...S.email, color: muted }}>{user.email}</div>}
             <a href={accountUrl} style={{ ...S.manage, borderColor: border, color: text }}>
               Manage your Spurs Account
@@ -158,11 +238,11 @@ export function SpursAccountMenu({
           {children}
 
           {onSignOut ? (
-            <button type="button" onClick={onSignOut} style={{ ...S.item, color: "#dc2626", width: "100%", textAlign: "left" }}>
+            <button type="button" onClick={onSignOut} style={{ ...S.item, ...S.signOut, width: "100%", textAlign: "left" }}>
               Sign out
             </button>
           ) : (
-            <a href={outUrl} style={{ ...S.item, color: "#dc2626" }}>
+            <a href={outUrl} style={{ ...S.item, ...S.signOut }}>
               Sign out
             </a>
           )}
@@ -172,19 +252,7 @@ export function SpursAccountMenu({
   );
 }
 
-/** Lighten/darken a hex colour by `amount` (-100..100). */
-function shade(hex: string, amount: number): string {
-  const m = hex.replace("#", "");
-  const full = m.length === 3 ? m.split("").map((c) => c + c).join("") : m;
-  const num = parseInt(full, 16);
-  const clamp = (v: number) => Math.max(0, Math.min(255, v));
-  const r = clamp((num >> 16) + amount);
-  const g = clamp(((num >> 8) & 0xff) + amount);
-  const b = clamp((num & 0xff) + amount);
-  return `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
-}
-
-const S: Record<string, CSSProperties> = {
+const S = {
   wrap: { position: "relative", display: "inline-block" },
   avatarBtn: {
     display: "grid",
@@ -197,6 +265,7 @@ const S: Record<string, CSSProperties> = {
     padding: 0,
     lineHeight: 1,
     fontFamily: "inherit",
+    overflow: "hidden",
   },
   signIn: {
     display: "inline-flex",
@@ -213,6 +282,7 @@ const S: Record<string, CSSProperties> = {
     position: "absolute",
     top: "calc(100% + 8px)",
     width: 288,
+    maxWidth: "calc(100vw - 16px)",
     borderRadius: 16,
     border: "1px solid",
     boxShadow: "0 12px 32px rgba(0,0,0,.16)",
@@ -246,8 +316,8 @@ const S: Record<string, CSSProperties> = {
     borderRadius: "inherit",
     objectFit: "cover",
   },
-  name: { fontSize: 14, fontWeight: 500, marginTop: 4 },
-  email: { fontSize: 12 },
+  name: { fontSize: 14, fontWeight: 500, marginTop: 4, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" },
+  email: { fontSize: 12, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" },
   manage: {
     marginTop: 8,
     display: "inline-block",
@@ -268,6 +338,7 @@ const S: Record<string, CSSProperties> = {
     cursor: "pointer",
     fontFamily: "inherit",
   },
-};
+  signOut: { color: "#dc2626" },
+} satisfies Record<string, CSSProperties>;
 
 export default SpursAccountMenu;
