@@ -57,6 +57,8 @@ export interface SpursSignInButtonProps {
   children?: ReactNode;
   /** Button colour. Defaults to Spurs indigo. */
   accent?: string;
+
+  className?:string;
 }
 
 const baseOf = (issuer?: string) => (issuer || SPURS_ISSUER).replace(/\/+$/, "");
@@ -66,6 +68,7 @@ export function SpursSignInButton({
   issuer,
   children = "Sign in with Spurs",
   accent = DEFAULT_ACCENT,
+
 }: SpursSignInButtonProps) {
   // Start with a stable value so server and client markup match, then upgrade
   // to the current URL after hydration when no explicit `returnTo` was given.
