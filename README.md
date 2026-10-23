@@ -97,6 +97,7 @@ Add a Spurs SSO button anywhere:
 import { SpursSignInButton } from "@spurs-cloud/accounts/react";
 
 <SpursSignInButton /> // returns to the current page after sign-in
+<SpursSignInButton returnTo="/dashboard" /> // app-relative paths are supported
 ```
 
 The same avatar + menu can be reused across every Spurs app:

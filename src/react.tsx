@@ -90,10 +90,10 @@ export function SpursSignInButton({
   style,
 }: SpursSignInButtonProps) {
   // Start with a stable value so server and client markup match, then upgrade
-  // to the current URL after hydration when no explicit `returnTo` was given.
+  // relative paths to absolute URLs after hydration, when the app origin is known.
   const [target, setTarget] = useState(returnTo ?? "/");
   useEffect(() => {
-    setTarget(returnTo ?? window.location.href);
+    setTarget(returnTo ? new URL(returnTo, window.location.origin).toString() : window.location.href);
   }, [returnTo]);
 
   const href = `${baseOf(issuer)}/sso/continue?return_to=${encodeURIComponent(target)}`;
