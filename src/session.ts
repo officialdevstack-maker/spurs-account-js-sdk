@@ -100,6 +100,8 @@ export class SpursClient {
       username: user.username,
       email: user.email,
       email_verified: user.email_verified,
+      kyc_level: user.kyc_level,
+      kyc_status: user.kyc_status,
       picture: user.picture,
     })
       .setProtectedHeader({ alg: "HS256" })

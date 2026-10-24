@@ -80,6 +80,10 @@ const user = await spurs.userFromRequest(request);   // Fetch API Request
 if (!user) return Response.redirect(spurs.loginUrl("https://myapp.spurs.com.ng"));
 ```
 
+`SpursUser` includes `username`, `email_verified`, `kyc_level`, and
+`kyc_status` when those claims are present in the shared session. For OIDC
+integrations, request the `roles` scope to receive KYC status and level.
+
 Useful URLs for your account menu:
 
 ```ts
