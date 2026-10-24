@@ -33,7 +33,7 @@ const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : use
 
 export interface SpursAccountMenuProps {
   /** The signed-in user. Omit it to render a "Sign in with Spurs" button. */
-  user?: Pick<SpursUser, "name" | "email" | "picture"> | null;
+  user?: Pick<SpursUser, "name" | "username" | "email" | "picture"> | null;
   /** Fallback avatar colour (hex). Defaults to Spurs indigo. */
   accent?: string;
   /** Secondary gradient colour. Defaults to a darker shade of `accent`. */
@@ -330,6 +330,7 @@ export function SpursAccountMenu({
               <Avatar picture={user.picture} initials={initials} />
             </div>
             <div style={S.name}>{user.name || "Your account"}</div>
+            {user.username && <div style={{ ...S.username, color: muted }}>@{user.username}</div>}
             {user.email && <div style={{ ...S.email, color: muted }}>{user.email}</div>}
             <a href={accountUrl} style={{ ...S.manage, borderColor: border, color: text }}>
               Manage your Spurs Account
@@ -420,6 +421,7 @@ const S = {
     objectFit: "cover",
   },
   name: { fontSize: 14, fontWeight: 500, marginTop: 4, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" },
+  username: { fontSize: 12, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" },
   email: { fontSize: 12, maxWidth: "100%", overflowWrap: "anywhere", textAlign: "center" },
   manage: {
     marginTop: 8,

@@ -51,6 +51,7 @@ export class SpursClient {
       return {
         sub: payload.sub,
         name: payload.name as string | undefined,
+        username: payload.username as string | undefined,
         email: payload.email as string | undefined,
         email_verified: payload.email_verified as boolean | undefined,
         picture: payload.picture as string | undefined,
@@ -94,6 +95,7 @@ export class SpursClient {
   async issue(user: SpursUser, expiresIn = "7d"): Promise<string> {
     return new SignJWT({
       name: user.name,
+      username: user.username,
       email: user.email,
       email_verified: user.email_verified,
       picture: user.picture,

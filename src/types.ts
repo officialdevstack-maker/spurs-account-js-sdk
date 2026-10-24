@@ -3,6 +3,7 @@ export interface SpursUser {
   /** Stable Spurs account id (the OIDC `sub`). Use this as your foreign key. */
   sub: string;
   name?: string;
+  username?: string;
   email?: string;
   email_verified?: boolean;
   picture?: string;
