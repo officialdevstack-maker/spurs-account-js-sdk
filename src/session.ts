@@ -54,6 +54,8 @@ export class SpursClient {
         username: payload.username as string | undefined,
         email: payload.email as string | undefined,
         email_verified: payload.email_verified as boolean | undefined,
+        kyc_level: (payload.kyc_level ?? payload.kyc) as number | undefined,
+        kyc_status: payload.kyc_status as SpursUser["kyc_status"],
         picture: payload.picture as string | undefined,
       };
     } catch {

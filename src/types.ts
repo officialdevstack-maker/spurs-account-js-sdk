@@ -5,7 +5,12 @@ export interface SpursUser {
   name?: string;
   username?: string;
   email?: string;
+  /** Whether the sign-in email address has been verified. */
   email_verified?: boolean;
+  /** Identity-verification level (0 means not verified). */
+  kyc_level?: number;
+  /** Identity-verification workflow status. */
+  kyc_status?: "unverified" | "pending" | "verified" | "rejected";
   picture?: string;
 }
 
